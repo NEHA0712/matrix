@@ -1,81 +1,148 @@
-# app.py
+# ============================================================
+# 🧠 Kraljic Matrix Procurement Classification (Streamlit App)
+# ============================================================
 
 import streamlit as st
 import pandas as pd
 import numpy as np
+import seaborn as sns
+import matplotlib.pyplot as plt
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder, StandardScaler
+from sklearn.metrics import accuracy_score, classification_report
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.naive_bayes import GaussianNB
+from sklearn.neighbors import KNeighborsClassifier
 
-st.set_page_config(page_title="Procurement ML App", layout="wide")
+# ------------------------------------------------------------
+# 🌐 Streamlit UI
+# ------------------------------------------------------------
+st.set_page_config(page_title="Kraljic Matrix ML App", layout="wide")
+st.title("📦 Kraljic Matrix Procurement Classification App")
+st.write("Upload your dataset to train multiple machine learning models and predict procurement categories.")
 
-st.title("📊 Procurement Strategy ML App (Kraljic Matrix Style)")
-st.markdown("Upload your dataset and train a machine learning model instantly.")
+# ------------------------------------------------------------
+# 📤 Upload CSV
+# ------------------------------------------------------------
+uploaded_file = st.file_uploader("📁 Upload your training CSV file", type=["csv"])
 
-# --- 1. Upload CSV file ---
-uploaded_file = st.file_uploader("Upload your CSV file", type=["csv"])
-
-if uploaded_file is not None:
+if uploaded_file:
     df = pd.read_csv(uploaded_file)
     st.success("✅ Dataset loaded successfully!")
-    st.write("### Dataset Preview:")
     st.dataframe(df.head())
 
-    # --- 2. Select Target Column ---
-    st.subheader("🎯 Select Target Variable")
-    target_col = st.selectbox("Select the target column to predict:", df.columns)
+    # ------------------------------------------------------------
+    # 🧹 Basic EDA
+    # ------------------------------------------------------------
+    st.subheader("🔍 Dataset Overview")
+    st.write("**Shape:**", df.shape)
+    st.write("**Missing Values:**")
+    st.write(df.isnull().sum())
 
-    # --- 3. Optional Encoding ---
-    st.subheader("🔤 Encode Categorical Columns Automatically")
-    cat_cols = df.select_dtypes(include=['object']).columns.tolist()
-    if len(cat_cols) > 0:
-        st.write(f"Categorical columns detected: {cat_cols}")
-        for col in cat_cols:
+    if "Kraljic_Category" in df.columns:
+        target_col = "Kraljic_Category"
+    elif "Category" in df.columns:
+        target_col = "Category"
+    else:
+        st.error("❌ Target column 'Kraljic_Category' or 'Category' not found!")
+        st.stop()
+
+    st.write("**Class Distribution:**")
+    st.bar_chart(df[target_col].value_counts())
+
+    # ------------------------------------------------------------
+    # 🧩 Data Preprocessing
+    # ------------------------------------------------------------
+    st.subheader("⚙️ Data Preprocessing")
+
+    label_encoders = {}
+    for col in df.select_dtypes(include=['object']).columns:
+        if col != target_col:
             le = LabelEncoder()
             df[col] = le.fit_transform(df[col].astype(str))
+            label_encoders[col] = le
 
-    # --- 4. Feature Selection ---
-    X = df.drop(columns=[target_col])
+    # Features and target
+    X = df.drop(target_col, axis=1)
     y = df[target_col]
 
-    # --- 5. Split Data ---
+    scaler = StandardScaler()
+    X_scaled = scaler.fit_transform(X)
+
     X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.3, random_state=42
+        X_scaled, y, test_size=0.2, random_state=42, stratify=y
     )
 
-    # --- 6. Scale Numeric Data ---
-    scaler = StandardScaler()
-    X_train = scaler.fit_transform(X_train)
-    X_test = scaler.transform(X_test)
+    st.success("✅ Data preprocessing completed!")
 
-    # --- 7. Train Model ---
-    model = RandomForestClassifier(n_estimators=100, random_state=42)
-    model.fit(X_train, y_train)
-    y_pred = model.predict(X_test)
+    # ------------------------------------------------------------
+    # 🧠 Train Multiple Models
+    # ------------------------------------------------------------
+    st.subheader("🤖 Training Models")
 
-    # --- 8. Evaluation ---
-    st.subheader("📈 Model Evaluation")
-    st.text("Confusion Matrix:")
-    st.write(confusion_matrix(y_test, y_pred))
-    st.text("Classification Report:")
-    st.text(classification_report(y_test, y_pred))
+    models = {
+        "KNN": KNeighborsClassifier(n_neighbors=5),
+        "SVM": SVC(kernel='rbf', probability=True),
+        "Naive Bayes": GaussianNB(),
+        "Logistic Regression": LogisticRegression(max_iter=1000),
+        "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42)
+    }
 
-    # --- 9. Single Prediction ---
-    st.subheader("🔮 Try a Single Prediction")
-    input_data = {}
-    for i, col in enumerate(df.drop(columns=[target_col]).columns):
-        val = st.text_input(f"Enter value for {col}")
-        input_data[col] = val
+    results = {}
 
-    if st.button("Predict"):
-        input_df = pd.DataFrame([input_data])
-        # Ensure numeric columns are converted properly
-        for c in input_df.columns:
-            input_df[c] = pd.to_numeric(input_df[c], errors='ignore')
-        input_scaled = scaler.transform(input_df)
-        prediction = model.predict(input_scaled)
-        st.success(f"✅ Predicted {target_col}: **{prediction[0]}**")
+    for name, model in models.items():
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        acc = accuracy_score(y_test, y_pred)
+        results[name] = acc
+
+    st.write("### 📊 Model Accuracy Comparison")
+    results_df = pd.DataFrame(list(results.items()), columns=["Model", "Accuracy"])
+    st.bar_chart(results_df.set_index("Model"))
+
+    best_model_name = max(results, key=results.get)
+    st.success(f"🏆 Best Model: {best_model_name} ({results[best_model_name]:.2f} accuracy)")
+
+    best_model = models[best_model_name]
+
+    # ------------------------------------------------------------
+    # 📥 Upload Test Data for Prediction
+    # ------------------------------------------------------------
+    st.subheader("📤 Upload Test Data for Prediction")
+
+    test_file = st.file_uploader("Upload your test CSV file", type=["csv"])
+
+    if test_file:
+        test_df = pd.read_csv(test_file)
+        st.write("✅ Test data preview:")
+        st.dataframe(test_df.head())
+
+        # Encode test data using fitted encoders
+        for col, le in label_encoders.items():
+            if col in test_df.columns:
+                test_df[col] = le.transform(test_df[col].astype(str))
+
+        # Standardize using same scaler
+        test_scaled = scaler.transform(test_df)
+
+        # Predict
+        predictions = best_model.predict(test_scaled)
+        test_df["Predicted_Category"] = predictions
+
+        st.success("✅ Predictions complete!")
+        st.dataframe(test_df.head())
+
+        # Download predictions
+        csv = test_df.to_csv(index=False).encode("utf-8")
+        st.download_button(
+            label="📩 Download Predictions CSV",
+            data=csv,
+            file_name="Kraljic_Predictions.csv",
+            mime="text/csv"
+        )
 
 else:
-    st.warning("👆 Please upload a CSV file to continue.")
+    st.info("👆 Upload your training CSV file to begin.")
