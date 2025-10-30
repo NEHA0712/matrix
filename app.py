@@ -10,8 +10,8 @@ from sklearn.metrics import classification_report, confusion_matrix
 
 # 1. Load data
 @st.cache_data
-def load_data(path):
-    df = pd.read_csv(path)
+def:
+    df = pd.read_csv(/content/realistic_kraljic_dataset.csv)
     return df
 
 st.title("Procurement Strategy – Kraljic Matrix Classification")
